@@ -23,6 +23,7 @@ cursor = mydb.cursor() # to access field as dictionary use cursor(as_dict=True)
 
 LOGIN=""
 PASS=""
+Elevesclasse = []
 def main(argv):
     #parser = argparse.ArgumentParser(description="Synchronise Alcuin sur Google Agenda")
     #parser.add_argument('days', type=int, help="Nombre de jours a synchroniser")
@@ -39,7 +40,7 @@ def main(argv):
     data, session = getInputs("https://esaip.alcuin.com/OpDotNet/Noyau/Login.aspx")
     session = loginAlcuin("https://esaip.alcuin.com/OpDotNet/Noyau/Login.aspx", data, session)  #Connexion successful
     print("[*] Extraction des données et création du tableau")
-    #retrieveNotes("", session)
+    retrieveNotes(session)
     #IDtoNom(session)
     #retrieveMatiere(session)
     print("[*] Notes synchronisé!")
@@ -70,7 +71,12 @@ def loginAlcuin(url,data,s):    #login
         sys.exit()
     return(s)
 
-def retrieveNotes(url, s):
+def retrieveNotes(s):
+    sql = 'SELECT * FROM Note'
+    cursor.execute(sql) 
+
+    oldhashbdd = hash(str(cursor.fetchall()))
+    print ('[*] Voici le hash de la BDD avant le check des notes',oldhashbdd)
     r = s.get('https://esaip.alcuin.com/OpDotNet/Context/context.jsx')  #Get user ID to show the right calendar
     usrId = re.search('\w+[0-9]', r.text).group(0)  #Regex to extract user ID
     #data = {'IdApplication': '190', 'TypeAcces': 'Utilisateur', 'url': '/EPlug/Agenda/Agenda.asp', 'session_IdCommunaute': '561', 'session_IdUser': usrId, 'session_IdGroupe': '786', 'session_IdLangue': '1'}
@@ -84,20 +90,51 @@ def retrieveNotes(url, s):
     IdSession = soup.find(attrs={"name": "IdSession"} )
     data = {'dUser' : usrId, 'IdCommunity' : '561', 'Idgroupe' : '', 'groupe' : '', 'IdSession' : IdSession['value'], 'IdApplication' : '142', 'TypeAcces' : 'MaFiche', 'TypeApplication' : '0'}
     s.post('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/Parcours.aspx?GObjet='+GObjet+'&IdObjet='+usrId+'&IdTypeObjet=26&intIdUtilisateur='+usrId+'&IdOnglet=178&IdAnnDos=6449 ', data=data)# Le post que le get précedant nous a dit d'effectuer
-    IDeleve = '54250'
-    notestab = s.get('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/pDetailParcours.aspx?idProcess=31294&idUser='+IDeleve+'&idIns=439755&idProcessUC=-1&typeRef=module').text#Le get final qui nous retourne le tableau avec les notes, il fau modifier l'ID ICI
-    notestabsoup = BeautifulSoup(notestab, "html.parser")# Préparation de la page avec beautiful soup
-    notes = notestabsoup.find_all("tr", {"class": "DataGridItem"})# Recherche de toutes les lignes du tableau de notes
-    for notes in notes: #Pour chaque lignes
-        notes = notes.find_all("td", {"class": "DataGridColumn EncadrementPaveRL"})# Récupération de toutes les lignes qui correspondent à une matière (class=DataGridColumn EncadrementPaveRL)
-        if len(notes) > 0:# Si la ligne correspond bien au critère de classe
-            liste = ['']# Initialisation de la liste des valeurs pour chaque colonne
-            for notes in notes:# Pour chaque colonne de la ligne
-                liste.append(notes.text.strip())#On l'ajoute à la liste(suppression des espaces avant et après les valeurs pour que ce soit propre et que les valeurs vides le soient vraiment)
-            if len(liste[5]) != 0:#Si il y a une note on l'ajoute à la BDD avec le nom de la matière.
-                print('Dans la matière ',liste[1],' la note est',liste[5],' avec un coeff de ', liste[4])
-
-    #Il reste à faire le beautiful soup
+   
+    for IDeleve in Elevesclasse:
+        IDeleve = str(IDeleve)
+        notestab = s.get('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/pDetailParcours.aspx?idProcess=31294&idUser='+IDeleve+'&idIns=439755&idProcessUC=-1&typeRef=module').text#Le get final qui nous retourne le tableau avec les notes, il fau modifier l'ID ICI
+        sql = 'SELECT Nom, prenom FROM Noms WHERE ID = "'+IDeleve+'"'
+        cursor.execute(sql)
+        NomPrenom = cursor.fetchone()
+        prenom = NomPrenom[0]
+        Nom = NomPrenom[1]
+        notestabsoup = BeautifulSoup(notestab, "html.parser")# Préparation de la page avec beautiful soup
+        tableau = notestabsoup.find_all("tr", {"class": "DataGridItem"})# Recherche de toutes les lignes du tableau de notes
+        for ligne in tableau: #Pour chaque lignes
+            lignematiere = ligne.find_all("td", {"class": "DataGridColumn EncadrementPaveRL"})# Récupération de toutes les lignes qui correspondent à une matière (class=DataGridColumn EncadrementPaveRL)
+            if len(lignematiere) > 0:# Si la ligne correspond bien au critère de classe
+                colval = ['']# Initialisation de la liste des valeurs pour chaque colonne
+                for val in lignematiere:# Pour chaque colonne de la ligne
+                    colval.append(val.text.strip())#On l'ajoute à la liste(suppression des espaces avant et après les valeurs pour que ce soit propre et que les valeurs vides le soient vraiment)
+                if len(colval[5]) != 0:#Si il y a une note on l'ajoute à la BDD avec le nom de la matière et l'ID de l'utilisateur.
+                    sql = 'SELECT * FROM Note WHERE IDUser = %s AND NomMatiere = %s'
+                    val = (IDeleve,colval[1])
+                    cursor.execute(sql,val)# On check si l'ID est déjà dans la BDD, si on a rien en réponse alors on effectue la requête sinon on passe
+                    if len(cursor.fetchall()) != 1:
+                            sql = "INSERT INTO Note (IDUser, NomMatiere, Note ) VALUES (%s, %s, %s)"
+                            val = (IDeleve, colval[1], colval[5].replace(",", "."))
+                            cursor.execute(sql, val)
+                            mydb.commit()
+                            print('[**] Ajout de la note de',prenom,' ',Nom,' qui est de :',colval[5],' en ', colval[1])
+                    else:
+                        sql = 'SELECT Note FROM Note WHERE IDUser = %s AND NomMatiere = %s'
+                        val = (IDeleve,colval[1])
+                        cursor.execute(sql,val)# On check si l'ID est déjà dans la BDD, si on a rien en réponse alors on effectue la requête sinon on passe
+                        if float(colval[5]) != float(cursor.fetchone()[0]):
+                            sql = "UPDATE Note set Note = %s WHERE IDUser = %s AND NomMatiere = %s"
+                            val = (colval[5].replace(",", "."), IDeleve, colval[1])
+                            cursor.execute(sql, val)
+                            mydb.commit()
+                            print('[**] Modification de la note de',prenom,' ',Nom,' qui est de :',colval[5],' en ', colval[1]) 
+                        else:
+                            print('[**] La note de',prenom,' ',Nom,' qui est de :',colval[5],' en ', colval[1],' ne change pas.')
+    sql = 'SELECT * FROM Note'
+    cursor.execute(sql)
+    newhashbdd = hash(str(cursor.fetchall()))
+    print ('[*] Voici le hash de la BDD après le check des notes',newhashbdd)
+    if oldhashbdd != newhashbdd:
+        print('[!] Il y a de nouvelles notes !')
 def retrieveMatiere(s):
     r = s.get('https://esaip.alcuin.com/OpDotNet/Context/context.jsx')  #Get user ID to show the right calendar
     usrId = re.search('\w+[0-9]', r.text).group(0)  #Regex to extract user ID
@@ -135,7 +172,7 @@ def retrieveMatiere(s):
                 
 
 def IDtoNom(s):
-    for IDeleve in range(1700,60000):
+    for IDeleve in range(53000,54200):
         Nom = ""
         Prenom = ""
         sql = "SELECT * FROM Noms WHERE ID = '"+str(IDeleve)+"'"
