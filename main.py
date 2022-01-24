@@ -23,7 +23,9 @@ cursor = mydb.cursor() # to access field as dictionary use cursor(as_dict=True)
 
 LOGIN=""
 PASS=""
-Elevesclasse = []
+TOKEN = {'authorization': 'Your discord user token'}
+DiscordUrl = 'urls used in the discord post request'
+Elevesclasse = [liste des IDs]
 def main(argv):
     #parser = argparse.ArgumentParser(description="Synchronise Alcuin sur Google Agenda")
     #parser.add_argument('days', type=int, help="Nombre de jours a synchroniser")
@@ -72,11 +74,7 @@ def loginAlcuin(url,data,s):    #login
     return(s)
 
 def retrieveNotes(s):
-    sql = 'SELECT * FROM Note'
-    cursor.execute(sql) 
-
-    oldhashbdd = hash(str(cursor.fetchall()))
-    print ('[*] Voici le hash de la BDD avant le check des notes',oldhashbdd)
+    new = 1
     r = s.get('https://esaip.alcuin.com/OpDotNet/Context/context.jsx')  #Get user ID to show the right calendar
     usrId = re.search('\w+[0-9]', r.text).group(0)  #Regex to extract user ID
     #data = {'IdApplication': '190', 'TypeAcces': 'Utilisateur', 'url': '/EPlug/Agenda/Agenda.asp', 'session_IdCommunaute': '561', 'session_IdUser': usrId, 'session_IdGroupe': '786', 'session_IdLangue': '1'}
@@ -90,7 +88,8 @@ def retrieveNotes(s):
     IdSession = soup.find(attrs={"name": "IdSession"} )
     data = {'dUser' : usrId, 'IdCommunity' : '561', 'Idgroupe' : '', 'groupe' : '', 'IdSession' : IdSession['value'], 'IdApplication' : '142', 'TypeAcces' : 'MaFiche', 'TypeApplication' : '0'}
     s.post('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/Parcours.aspx?GObjet='+GObjet+'&IdObjet='+usrId+'&IdTypeObjet=26&intIdUtilisateur='+usrId+'&IdOnglet=178&IdAnnDos=6449 ', data=data)# Le post que le get précedant nous a dit d'effectuer
-   
+    NewNote = []
+    NoteUpdate = []
     for IDeleve in Elevesclasse:
         IDeleve = str(IDeleve)
         notestab = s.get('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/pDetailParcours.aspx?idProcess=31294&idUser='+IDeleve+'&idIns=439755&idProcessUC=-1&typeRef=module').text#Le get final qui nous retourne le tableau avec les notes, il fau modifier l'ID ICI
@@ -108,6 +107,7 @@ def retrieveNotes(s):
                 for val in lignematiere:# Pour chaque colonne de la ligne
                     colval.append(val.text.strip())#On l'ajoute à la liste(suppression des espaces avant et après les valeurs pour que ce soit propre et que les valeurs vides le soient vraiment)
                 if len(colval[5]) != 0:#Si il y a une note on l'ajoute à la BDD avec le nom de la matière et l'ID de l'utilisateur.
+                    NomMatiere = colval[1]
                     sql = 'SELECT * FROM Note WHERE IDUser = %s AND NomMatiere = %s'
                     val = (IDeleve,colval[1])
                     cursor.execute(sql,val)# On check si l'ID est déjà dans la BDD, si on a rien en réponse alors on effectue la requête sinon on passe
@@ -117,6 +117,8 @@ def retrieveNotes(s):
                             cursor.execute(sql, val)
                             mydb.commit()
                             print('[**] Ajout de la note de',prenom,' ',Nom,' qui est de :',colval[5],' en ', colval[1])
+                            if colval[1] not in NewNote:
+                                NewNote.append(colval[1])
                     else:
                         sql = 'SELECT Note FROM Note WHERE IDUser = %s AND NomMatiere = %s'
                         val = (IDeleve,colval[1])
@@ -126,15 +128,46 @@ def retrieveNotes(s):
                             val = (colval[5].replace(",", "."), IDeleve, colval[1])
                             cursor.execute(sql, val)
                             mydb.commit()
-                            print('[**] Modification de la note de',prenom,' ',Nom,' qui est de :',colval[5],' en ', colval[1]) 
+                            print('[**] Modification de la note de',prenom,' ',Nom,' qui est de :',colval[5],' en ', colval[1])
+                            if colval[1] not in NoteUpdate:
+                                NoteUpdate.append(colval[1])
                         else:
                             print('[**] La note de',prenom,' ',Nom,' qui est de :',colval[5],' en ', colval[1],' ne change pas.')
-    sql = 'SELECT * FROM Note'
-    cursor.execute(sql)
-    newhashbdd = hash(str(cursor.fetchall()))
-    print ('[*] Voici le hash de la BDD après le check des notes',newhashbdd)
-    if oldhashbdd != newhashbdd:
-        print('[!] Il y a de nouvelles notes !')
+    for m in NewNote:
+        if new:
+            data = {'content': '@everyone De nouvelles notes sont arrivées :partying_face: '}
+            r = requests.post(DiscordUrl, data=data, headers=TOKEN)
+            new = 0
+        Medianne,Moyenne,MoreThanTen,LessThanTen,NoteMin,NoteMax = messagediscord(m)
+        data = {'content': 'La moyenne de la classe en '+str(m)+' est de '+Moyenne+' et la médiane est de '+Medianne+'.\nIl y a '+MoreThanTen+' notes au dessus ou égales à dix et '+LessThanTen+' notes en dessous de dix.\nLa meilleure note est de ' +NoteMax+' et la moins bonne note est de '+NoteMin}
+        r = requests.post(discordurl, data=data, headers=TOKEN)
+
+
+    for m in NoteUpdate:
+        if new:
+            data = {'content': '@everyone De nouvelles notes sont arrivées :partying_face: '}
+            r = requests.post(DiscordUrl, data=data, headers=TOKEN)
+            new = 0
+        Medianne,Moyenne,MoreThanTen,LessThanTen,NoteMin,NoteMax = messagediscord(m)
+        data = {'content': 'La moyenne de la classe en '+str(m)+' est de '+Moyenne+' et la médiane est de '+Medianne+'.\nIl y a maintenant '+MoreThanTen+' notes au dessus ou égales à dix et '+LessThanTen+' notes en dessous de dix.\nLa meilleure note est désormais de ' +NoteMax+' et la moins bonne note est de '+NoteMin}
+        r = requests.post('DiscordUrl, data=data, headers=TOKEN)
+
+def messagediscord(m):
+        cursor.execute('SET @rowindex := -1')
+        cursor.execute('SELECT ROUND(AVG(n.Note),2) as Median FROM (SELECT @rowindex:=@rowindex + 1 AS rowindex, Note.Note AS Note FROM Note  WHERE NomMatiere = \"'+m+'\" ORDER BY Note.Note) AS n WHERE n.rowindex IN (FLOOR(@rowindex / 2), CEIL(@rowindex / 2))')
+        Medianne = str(cursor.fetchone()[0])
+        cursor.execute('SELECT ROUND(AVG(Note),2) From Note WHERE NomMatiere = \"'+m+'\"')
+        Moyenne = str(cursor.fetchone()[0])
+        cursor.execute('SELECT count(Note) From Note WHERE NomMatiere = \"'+m+'\" AND Note >= 10')
+        MoreThanTen = str(cursor.fetchone()[0])
+        cursor.execute('SELECT count(Note) From Note WHERE NomMatiere = \"'+m+'\" AND Note < 10')
+        LessThanTen = str(cursor.fetchone()[0])
+        cursor.execute('SELECT MIN(Note) From Note WHERE NomMatiere = \"'+m+'\"')
+        NoteMin = str(cursor.fetchone()[0])
+        cursor.execute('SELECT Max(Note) From Note WHERE NomMatiere = \"'+m+'\"')
+        NoteMax = str(cursor.fetchone()[0])
+        return(Medianne,Moyenne,MoreThanTen,LessThanTen,NoteMin,NoteMax)
+
 def retrieveMatiere(s):
     r = s.get('https://esaip.alcuin.com/OpDotNet/Context/context.jsx')  #Get user ID to show the right calendar
     usrId = re.search('\w+[0-9]', r.text).group(0)  #Regex to extract user ID
@@ -212,3 +245,9 @@ if __name__ == "__main__":
     main(sys.argv[1:])
 mydb.close()
 print("[*] Déconnecté de la BDD")
+
+
+
+
+
+
