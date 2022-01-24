@@ -1,0 +1,6 @@
+CREATE USER 'alcuinsgod'@'localhost' IDENTIFIED BY '!mad3Alcu1mybitch'
+GRANT ALL PRIVILEGES ON Notes. * TO 'alcuinsgod'@'localhost';
+CREATE TABLE Noms (ID int, Nom varchar(255), prenom varchar(255), PRIMARY KEY (ID));
+CREATE TABLE Matiere (Nom varchar(255), Coeff float, PRIMARY KEY (Nom));
+CREATE TABLE Note (IDUser int, NomMatiere varchar(255), Note float, PRIMARY KEY (IDUser, NomMatiere), FOREIGN KEY(IDUser) REFERENCES Noms(ID), FOREIGN KEY(NomMatiere) REFERENCES Matiere(Nom));
+
