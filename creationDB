@@ -1,3 +1,4 @@
+CREATE TABLE Notes;
 CREATE USER 'alcuinsgod'@'localhost' IDENTIFIED BY '!mad3Alcu1mybitch'
 GRANT ALL PRIVILEGES ON Notes. * TO 'alcuinsgod'@'localhost';
 CREATE TABLE Noms (ID int, Nom varchar(255), prenom varchar(255), PRIMARY KEY (ID));
