@@ -28,18 +28,20 @@ Elevesclasse = []
 
 def main(argv):
     print("[*] Connexion à Alcuin")
-    data, session = getInputs("https://esaip.alcuin.com/OpDotNet/Noyau/Login.aspx")
-    session = loginAlcuin("https://esaip.alcuin.com/OpDotNet/Noyau/Login.aspx", data, session)  #Connexion successful
+    loginAlcuin()  #Connexion successful
     parser = argparse.ArgumentParser(description="Récupérer toutes les notes de ceux que l'on souhaite")
     parser.add_argument('-o', '--output', help="Fichier de log")
-    parser.add_argument("function", nargs="?", choices=['Notes', 'Matiere', 'Noms'], default='Notes')
+    parser.add_argument("function", nargs="?", choices=['Notes', 'Matiere', 'Moyenne','Noms'], default='Notes')
     args, sub_args = parser.parse_known_args()  
     if args.function == "Notes":
         print("[*] Extraction des données et remplissage du tableau Notes")
-        retrieveNotes(session)
+        retrieveNotes()
     elif args.function == "Matiere":
         print("[*] Extraction des données et remplissage du tableau Matiere")
-        retrieveMatiere(session)
+        retrieveMatiere()
+    elif args.function == "Moyenne":
+        print("[*] Extraction des données et remplissage du tableau Matiere")
+        retrieveMoyenne()
     elif args.function == "Noms":
         parser.add_argument('-debut','--debut', help="ID from wich we synchronize the table Noms.")
         parser.add_argument('-fin', '--fin', help="Last ID of the range from wich we synchronize the table Noms.")
@@ -51,54 +53,53 @@ def main(argv):
        sys.stdout = open(args.output, 'w+')
     print("[*] Notes synchronisé!")
 
-def getInputs(url): #Get the inputs to send back to the login page (Tokens etc)
-    s = requests.Session()
-    r = s.get(url)
-
-    soup = BeautifulSoup(r.text, "html.parser")
-    inputs = soup.find_all("input")
-
-    data={}
-    for i in inputs:    #Extract inputs and store them in data
-        try:
-            data[i["name"]]=i["value"]
-        except:
-            pass
-    return(data, s)
-
-def loginAlcuin(url,data,s):    #login
-    data["UcAuthentification1$UcLogin1$txtLogin"] = LOGIN
-    data["UcAuthentification1$UcLogin1$txtPassword"] = PASS
+def loginAlcuin():    #login
+    # head to alcuin's login page
+    driver.get("https://esaip.alcuin.com/OpDotNet/Noyau/Login.aspx")
+    # find username/email field and send the username itself to the input field
+    #button = driver.find_element_by_name("jqi_state0_buttonOk")
+    #button.click()
+    driver.find_element(By.ID,"UcAuthentification1_UcLogin1_txtLogin").send_keys(LOGIN)
+    # find password input field and insert password as well
+    driver.find_element(By.ID,"UcAuthentification1_UcLogin1_txtPassword").send_keys(PASS)
+    # click login button
+    driver.find_element(By.ID,"UcAuthentification1_UcLogin1_btnEntrer").click()
     try:
-        s.post(url, data=data)
+        assert "https://esaip.alcuin.com/OpDotNet/Noyau/Default.aspx?" == driver.current_url
         print("[*] Connexion à Alcuin réussie")
     except:
         print("[-] Impossible de se connecter à Alcuin")
         sys.exit()
-    return(s)
-
-def retrieveNotes(s):
+def retrieveNotes():
     new = 1# Will be set to 0 if a new grade is discovered
-    r = s.get('https://esaip.alcuin.com/OpDotNet/Context/context.jsx')  #Get user ID to show the right calendar
-    usrId = re.search('\w+[0-9]', r.text).group(0)  #Regex to extract user ID
-    s.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Accueil.aspx?IdApplication=142&TypeAcces=MaFiche&IdLien=6816') #Necessary GET request required for the next GET(Otherwise you get denied)
-    GObjet = s.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Navigation/Dossier/Dossier.aspx').text # In the reply of this request we can extract the GObjet ID that change every time you click on the "Ma fiche" panel on the left
+    driver.get('https://esaip.alcuin.com/OpDotNet/Context/context.jsx')  #Get user ID to show the right calendar
+    usrId = re.search('\w+[0-9]', driver.page_source).group(0)  #Regex to extract user ID
+    driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Accueil.aspx?IdApplication=142&TypeAcces=MaFiche&IdLien=6816') #Necessary GET request required for the next GET(Otherwise you get denied)
+    driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Navigation/Dossier/Dossier.aspx')# In the reply of this request we can extract the GObjet ID that change every time you click on the "Ma fiche" panel on the left
+    GObjet = driver.page_source
     GObjet = GObjet[GObjet.index('GObjet=')+len('GObjet='):GObjet.index('&IdObjet')] # Extracting the GObjet ID for the next requests
-    g = s.get('https://esaip.alcuin.com/OpDotNet/Noyau/Utils/LaunchAppli.aspx?IdApplication=142&TypeAcces=MaFiche&groupe=&TypeAppli=0&url=%2fOpDotNet%2fEplug%2fFPC%2fProcess%2fAnnuaire%2fParcours%2fParcours.aspx%3fGObjet%3d'+GObjet+'%26IdObjet%3d'+usrId+'%26IdTypeObjet%3d26%26intIdUtilisateur%3d'+usrId+'%26IdOnglet%3d178%26IdAnnDos%3d6449') # This gives us the session ID to use in the next post(It's the GET generated after clicking on "Parcour" tab)
-    soup = BeautifulSoup(g.text, "html.parser")
+    driver.get('https://esaip.alcuin.com/OpDotNet/Noyau/Utils/LaunchAppli.aspx?IdApplication=142&TypeAcces=MaFiche&groupe=&TypeAppli=0&url=%2fOpDotNet%2fEplug%2fFPC%2fProcess%2fAnnuaire%2fParcours%2fParcours.aspx%3fGObjet%3d'+GObjet+'%26IdObjet%3d'+usrId+'%26IdTypeObjet%3d26%26intIdUtilisateur%3d'+usrId+'%26IdOnglet%3d178%26IdAnnDos%3d6449') # This gives us the session ID to use in the next post(It's the GET generated after clicking on "Parcour" tab)
+    g = driver.page_source
+    soup = BeautifulSoup(g, "html.parser")
     IdSession = soup.find(attrs={"name": "IdSession"} )
-    data = {'dUser' : usrId, 'IdCommunity' : '561', 'Idgroupe' : '', 'groupe' : '', 'IdSession' : IdSession['value'], 'IdApplication' : '142', 'TypeAcces' : 'MaFiche', 'TypeApplication' : '0'}# data needed for the post request
-    s.post('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/Parcours.aspx?GObjet='+GObjet+'&IdObjet='+usrId+'&IdTypeObjet=26&intIdUtilisateur='+usrId+'&IdOnglet=178&IdAnnDos=6449 ', data=data)# Post generated by the GET above
     NewNote = []
     NoteUpdate = []
     for IDeleve in Elevesclasse:
         IDeleve = str(IDeleve)
-        notestab = s.get('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/pDetailParcours.aspx?idProcess=31294&idUser='+IDeleve+'&idIns=439755&idProcessUC=-1&typeRef=module').text#The final GET request when you click on your the current year, some parameters like idIns will probably need to be modified
+        #corps = "{'dUser' : IDeleve, 'IdCommunity' : '561', 'Idgroupe' : '', 'groupe' : '', 'IdSession' : IdSession['value'], 'IdApplication' : '142', 'TypeAcces' : 'MaFiche', 'TypeApplication' : '0'}"# data needed for the post request
+        driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/Parcours.aspx?GObjet='+GObjet+'&IdObjet='+usrId+'&IdTypeObjet=26&intIdUtilisateur='+IDeleve+'&IdOnglet=178&IdAnnDos=6449')# Post generated by the GET above
+        element = driver.find_element_by_css_selector("[ onclick=\"self.location.href='/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/pDetailParcours.aspx?idProcess=31294&idUser=54268&idIns=439755&idProcessUC=-1&typeRef=module'; return false;\"]")
+        link = "self.location.href='/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/pDetailParcours.aspx?idProcess=31294&idUser="+IDeleve+"&idIns=439755&idProcessUC=-1&typeRef=module'; return false;"
+        driver.execute_script("arguments[0].setAttribute(\"onclick\",\""+link+"\")", element)
+        button = driver.find_element_by_partial_link_text("IRA3 2021-2022")
+        button.click()
+        notestab = driver.page_source
         sql = 'SELECT Nom, prenom FROM Noms WHERE ID = "'+IDeleve+'"'# the next lines are here just to display in the console the names of the sudent that are being analysed for debuging purpuses
         cursor.execute(sql)
         NomPrenom = cursor.fetchone()
         prenom = NomPrenom[0]
         Nom = NomPrenom[1]
+        #print(notestab)
         notestabsoup = BeautifulSoup(notestab, "html.parser")# Preparing the Reply with beautifulSoup
         tableau = notestabsoup.find_all("tr", {"class": "DataGridItem"})# Looking for all the lignes in the table
         for ligne in tableau: #Pour chaque lignes
@@ -120,6 +121,7 @@ def retrieveNotes(s):
                             print('[**] Ajout de la note de',prenom,' ',Nom,' qui est de :',colval[5],' en ', colval[1])
                             if colval[1] not in NewNote:
                                 NewNote.append(colval[1])
+                            print(NewNote)
                     else:
                         sql = 'SELECT Note FROM Note WHERE IDUser = %s AND NomMatiere = %s'
                         val = (IDeleve,colval[1])
@@ -134,24 +136,32 @@ def retrieveNotes(s):
                                 NoteUpdate.append(colval[1])
                         else:
                             print('[**] La note de',prenom,' ',Nom,' qui est de :',colval[5],' en ', colval[1],' ne change pas.')
+    driver.close()
     for m in NewNote:#Discord message when new grades drop
         if new:
-            data = {'content': '@everyone De nouvelles notes sont arrivées :partying_face: '}
+            data = {'content': 'De nouvelles notes sont arrivées :partying_face: '}
             r = requests.post(channel, data=data, headers=TOKEN)
             new = 0
         Medianne,Moyenne,MoreThanTen,LessThanTen,NoteMin,NoteMax = messagediscord(m)
         data = {'content': 'La moyenne de la classe en '+str(m)+' est de '+Moyenne+' et la médiane est de '+Medianne+'.\nIl y a '+MoreThanTen+' notes au dessus ou égales à dix et '+LessThanTen+' notes en dessous de dix.\nLa meilleure note est de ' +NoteMax+' et la moins bonne note est de '+NoteMin}
         r = requests.post(channel, data=data, headers=TOKEN)
+	
+        data = {'content': '---------------------------------------------------------------'}
+        r = requests.post(channel, data=data, headers=TOKEN)
+        time.sleep(2)
 
 
     for m in NoteUpdate:#Discord message when updated grades drop
         if new:
-            data = {'content': '@everyone De nouvelles notes sont arrivées :partying_face: '}
+            data = {'content': 'De nouvelles notes sont arrivées :partying_face: '}
             r = requests.post(channel, data=data, headers=TOKEN)
             new = 0
         Medianne,Moyenne,MoreThanTen,LessThanTen,NoteMin,NoteMax = messagediscord(m)
         data = {'content': 'La moyenne de la classe en '+str(m)+' est de '+Moyenne+' et la médiane est de '+Medianne+'.\nIl y a maintenant '+MoreThanTen+' notes au dessus ou égales à dix et '+LessThanTen+' notes en dessous de dix.\nLa meilleure note est désormais de ' +NoteMax+' et la moins bonne note est de '+NoteMin}
         r = requests.post(channel, data=data, headers=TOKEN)
+        data = {'content': '---------------------------------------------------------------'}
+        r = requests.post(channel, data=data, headers=TOKEN)
+        time.sleep(2)
 
 def messagediscord(m):
         cursor.execute('SET @rowindex := -1')
@@ -169,18 +179,29 @@ def messagediscord(m):
         NoteMax = str(cursor.fetchone()[0])
         return(Medianne,Moyenne,MoreThanTen,LessThanTen,NoteMin,NoteMax)
 
-def retrieveMatiere(s):
-    r = s.get('https://esaip.alcuin.com/OpDotNet/Context/context.jsx')  #Get user ID to show the right calendar
-    usrId = re.search('\w+[0-9]', r.text).group(0)  #Regex to extract user ID
-    s.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Accueil.aspx?IdApplication=142&TypeAcces=MaFiche&IdLien=6816') #Necessary GET request required for the next GET(Otherwise you get denied)
-    GObjet = s.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Navigation/Dossier/Dossier.aspx').text # In the reply of this request we can extract the GObjet ID that change every time you click on the "Ma fiche" panel on the left
+def retrieveMatiere():
+    driver.get('https://esaip.alcuin.com/OpDotNet/Context/context.jsx')  #Get user ID to show the right calendar
+    r = driver.page_source
+    usrId = re.search('\w+[0-9]', r).group(0)  #Regex to extract user ID
+    IDeleve = "54391"
+    driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Accueil.aspx?IdApplication=142&TypeAcces=MaFiche&IdLien=6816') #Necessary GET request required for the next GET(Otherwise you get denied)
+    driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Navigation/Dossier/Dossier.aspx') # In the reply of this request we can extract the GObjet ID that change every time you click on the "Ma fiche" panel on the left
+    GObjet = driver.page_source
     GObjet = GObjet[GObjet.index('GObjet=')+len('GObjet='):GObjet.index('&IdObjet')] # Extracting the GObjet ID for the next requests
-    g = s.get('https://esaip.alcuin.com/OpDotNet/Noyau/Utils/LaunchAppli.aspx?IdApplication=142&TypeAcces=MaFiche&groupe=&TypeAppli=0&url=%2fOpDotNet%2fEplug%2fFPC%2fProcess%2fAnnuaire%2fParcours%2fParcours.aspx%3fGObjet%3d'+GObjet+'%26IdObjet%3d'+usrId+'%26IdTypeObjet%3d26%26intIdUtilisateur%3d'+usrId+'%26IdOnglet%3d178%26IdAnnDos%3d6449') # This gives us the session ID to use in the next post(It's the GET generated after clicking on "Parcour" tab)
-    soup = BeautifulSoup(g.text, "html.parser")
+    driver.get('https://esaip.alcuin.com/OpDotNet/Noyau/Utils/LaunchAppli.aspx?IdApplication=142&TypeAcces=MaFiche&groupe=&TypeAppli=0&url=%2fOpDotNet%2fEplug%2fFPC%2fProcess%2fAnnuaire%2fParcours%2fParcours.aspx%3fGObjet%3d'+GObjet+'%26IdObjet%3d'+usrId+'%26IdTypeObjet%3d26%26intIdUtilisateur%3d'+usrId+'%26IdOnglet%3d178%26IdAnnDos%3d6449') # This gives us the session ID to use in the next post(It's the GET generated after clicking on "Parcour" tab)
+    g = driver.page_source
+    soup = BeautifulSoup(g, "html.parser")
     IdSession = soup.find(attrs={"name": "IdSession"} )
-    data = {'dUser' : usrId, 'IdCommunity' : '561', 'Idgroupe' : '', 'groupe' : '', 'IdSession' : IdSession['value'], 'IdApplication' : '142', 'TypeAcces' : 'MaFiche', 'TypeApplication' : '0'}# data needed for the post request
-    s.post('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/Parcours.aspx?GObjet='+GObjet+'&IdObjet='+usrId+'&IdTypeObjet=26&intIdUtilisateur='+usrId+'&IdOnglet=178&IdAnnDos=6449 ', data=data)# Post generated by the GET above
-    notestab = s.get('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/pDetailParcours.aspx?idProcess=31294&idUser='+usrId+'&idIns=439755&idProcessUC=-1&typeRef=module').text#The final GET request when you click on your the current year, some parameters like idIns will probably need to be modified
+    #data = {'dUser' : usrId, 'IdCommunity' : '561', 'Idgroupe' : '', 'groupe' : '', 'IdSession' : IdSession['value'], 'IdApplication' : '142', 'TypeAcces' : 'MaFiche', 'TypeApplication' : '0'}# data needed for the post request
+    #driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/Parcours.aspx?GObjet='+GObjet+'&IdObjet='+usrId+'&IdTypeObjet=26&intIdUtilisateur='+usrId+'&IdOnglet=178&IdAnnDos=6449 ')# Post generated by the GET above
+    #driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/pDetailParcours.aspx?idProcess=31294&idUser='+usrId+'&idIns=439755&idProcessUC=-1&typeRef=module')#The final GET request when you click on your the current year, some parameters like idIns will probably need to be modified
+    driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/Parcours.aspx?GObjet='+GObjet+'&IdObjet='+usrId+'&IdTypeObjet=26&intIdUtilisateur='+IDeleve+'&IdOnglet=178&IdAnnDos=6449')# Post generated by the GET above
+    element = driver.find_element_by_css_selector("[ onclick=\"self.location.href='/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/pDetailParcours.aspx?idProcess=31294&idUser=54268&idIns=439755&idProcessUC=-1&typeRef=module'; return false;\"]")
+    link = "self.location.href='/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/pDetailParcours.aspx?idProcess=31294&idUser="+IDeleve+"&idIns=439755&idProcessUC=-1&typeRef=module'; return false;"
+    driver.execute_script("arguments[0].setAttribute(\"onclick\",\""+link+"\")", element)
+    button = driver.find_element_by_partial_link_text("IRA3 2021-2022")
+    button.click()
+    notestab = driver.page_source
     notestabsoup = BeautifulSoup(notestab, "html.parser")# Preparing the Reply with beautifulSoup
     tableau = notestabsoup.find_all("tr", {"class": "DataGridItem"})# Looking for all the lignes in the table
     for ligne in tableau: #Pour chaque lignes
@@ -208,11 +229,13 @@ def IDtoNom(s,debut,fin):
         sql = "SELECT * FROM Noms WHERE ID = '"+str(IDeleve)+"'"
         cursor.execute(sql)# On check si l'ID est déjà dans la BDD, si on a rien en réponse alors on effectue la requête sinon on passe
         if len(cursor.fetchall()) != 1:
-            s.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Accueil.aspx?IdApplication=142&TypeAcces=MaFiche&IdLien=6816') #Necessary GET request required for the next GET(Otherwise you get denied)
-            GObjet = s.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Navigation/Dossier/Dossier.aspx').text # In the reply of this request we can extract the GObjet ID that change every time you click on the "Ma fiche" panel on the left
+            driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Accueil.aspx?IdApplication=142&TypeAcces=MaFiche&IdLien=6816') #Necessary GET request required for the next GET(Otherwise you get denied)
+            driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Navigation/Dossier/Dossier.aspx') # In the reply of this request we can extract the GObjet ID that change every time you click on the "Ma fiche" panel on the left
+            GObjet = driver.page_source
             GObjet = GObjet[GObjet.index('GObjet=')+len('GObjet='):GObjet.index('&IdObjet')] # Extracting the GObjet ID for the next requests
-            s.get('https://esaip.alcuin.com/OpDotNet/site/Scripts/plugins/RequireJS/require.js') #Necessary GET request for the following GET
-            NomPrenom = s.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Navigation/Dossier/esaip_dossieretudiant.opx?GObjet='+GObjet+'&IdObjet='+str(IDeleve)+'&IdTypeObjet=26&intIdUtilisateur='+str(IDeleve)+'&IdOnglet=245&IdAnnDos=6449&1onglet=1').text # Get qui nous renvoie le post a réaliser (quand on clique sur l'onglet parcour)
+            driver.get('https://esaip.alcuin.com/OpDotNet/site/Scripts/plugins/RequireJS/require.js') #Necessary GET request for the following GET
+            driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Navigation/Dossier/esaip_dossieretudiant.opx?GObjet='+GObjet+'&IdObjet='+str(IDeleve)+'&IdTypeObjet=26&intIdUtilisateur='+str(IDeleve)+'&IdOnglet=245&IdAnnDos=6449&1onglet=1') # Get qui nous renvoie le post a réaliser (quand on clique sur l'onglet parcour)
+            NomPrenom = driver.page_source
             NomPrenom = BeautifulSoup(NomPrenom, "html.parser")
             try:
                 for Nom in  NomPrenom.find('div',{'id' : 'NOM'}).find('div', attrs={"class":'form_fieldValue'}):
@@ -231,7 +254,67 @@ def IDtoNom(s,debut,fin):
             print(cursor.fetchall())
             print('Déjà présent')
         
-
+def retrieveMoyenne():
+    new = 1# Will be set to 0 if a new grade is discovered
+    driver.get('https://esaip.alcuin.com/OpDotNet/Context/context.jsx')  #Get user ID to show the right calendar
+    usrId = re.search('\w+[0-9]', driver.page_source).group(0)  #Regex to extract user ID
+    driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Accueil.aspx?IdApplication=142&TypeAcces=MaFiche&IdLien=6816') #Necessary GET request required for the next GET(Otherwise you get denied)
+    driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/Annuaire/Navigation/Dossier/Dossier.aspx')# In the reply of this request we can extract the GObjet ID that change every time you click on the "Ma fiche" panel on the left
+    GObjet = driver.page_source
+    GObjet = GObjet[GObjet.index('GObjet=')+len('GObjet='):GObjet.index('&IdObjet')] # Extracting the GObjet ID for the next requests
+    driver.get('https://esaip.alcuin.com/OpDotNet/Noyau/Utils/LaunchAppli.aspx?IdApplication=142&TypeAcces=MaFiche&groupe=&TypeAppli=0&url=%2fOpDotNet%2fEplug%2fFPC%2fProcess%2fAnnuaire%2fParcours%2fParcours.aspx%3fGObjet%3d'+GObjet+'%26IdObjet%3d'+usrId+'%26IdTypeObjet%3d26%26intIdUtilisateur%3d'+usrId+'%26IdOnglet%3d178%26IdAnnDos%3d6449') # This gives us the session ID to use in the next post(It's the GET generated after clicking on "Parcour" tab)
+    g = driver.page_source
+    soup = BeautifulSoup(g, "html.parser")
+    IdSession = soup.find(attrs={"name": "IdSession"} )
+    NewNote = []
+    NoteUpdate = []
+    for IDeleve in Elevesclasse:
+        IDeleve = str(IDeleve)
+        #corps = "{'dUser' : IDeleve, 'IdCommunity' : '561', 'Idgroupe' : '', 'groupe' : '', 'IdSession' : IdSession['value'], 'IdApplication' : '142', 'TypeAcces' : 'MaFiche', 'TypeApplication' : '0'}"# data needed for the post request
+        driver.get('https://esaip.alcuin.com/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/Parcours.aspx?GObjet='+GObjet+'&IdObjet='+usrId+'&IdTypeObjet=26&intIdUtilisateur='+IDeleve+'&IdOnglet=178&IdAnnDos=6449')# Post generated by the GET above
+        element = driver.find_element_by_css_selector("[ onclick=\"self.location.href='/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/pDetailParcours.aspx?idProcess=31294&idUser=54268&idIns=439755&idProcessUC=-1&typeRef=module'; return false;\"]")
+        link = "self.location.href='/OpDotNet/Eplug/FPC/Process/Annuaire/Parcours/pDetailParcours.aspx?idProcess=31294&idUser="+IDeleve+"&idIns=439755&idProcessUC=-1&typeRef=module'; return false;"
+        driver.execute_script("arguments[0].setAttribute(\"onclick\",\""+link+"\")", element)
+        button = driver.find_element_by_partial_link_text("IRA3 2021-2022")
+        button.click()
+        notestab = driver.page_source
+        sql = 'SELECT Nom, prenom FROM Noms WHERE ID = "'+IDeleve+'"'# the next lines are here just to display in the console the names of the sudent that are being analysed for debuging purpuses
+        cursor.execute(sql)
+        NomPrenom = cursor.fetchone()
+        prenom = NomPrenom[0]
+        Nom = NomPrenom[1]
+        #print(notestab)
+        notestabsoup = BeautifulSoup(notestab, "html.parser")# Preparing the Reply with beautifulSoup
+        tableau = notestabsoup.find_all("tr", {"class": "DataGridItem"})# Looking for all the lignes in the table
+        for ligne in tableau: #Pour chaque lignes
+            lignematiere = ligne.find_all("td", {"class": "DataGridColumn EncadrementPaveRL FondtresClair"})# Getting all the lines with that option(class=DataGridColumn EncadrementPaveRL) it corresponds to the courses only.
+            if len(lignematiere) > 0:# if the ligne correspond to the class option above
+                colval = ['']# Liste to store the value of each columns
+                for val in lignematiere:#
+                    colval.append(val.text.strip())#Adding to the list and deleting spaces befor and after the value (to be sure that we have real empty values and not just spaces)
+                if colval[1] == "AN IRA3 2021-2022 S05":
+                    if len(colval[5]) != 0:#If there is a grade we can add it to the database
+                        sql = 'SELECT * FROM Note WHERE IDUser = %s AND NomMatiere = %s'
+                        val = (IDeleve,colval[1])
+                        cursor.execute(sql,val)# Checking the user ID and course ID to see if this value already exist, if so, we check if it changed to see if we have to update it or not.(a select is quicker than updating everything)
+                        if len(cursor.fetchall()) != 1:#If the garde didn't exist before
+                                sql = "INSERT INTO Note (IDUser, NomMatiere, Note ) VALUES (%s, %s, %s)"
+                                val = (IDeleve, colval[1], colval[5].replace(",", "."))
+                                cursor.execute(sql, val)
+                                mydb.commit()
+                                print('[**] Ajout de la note de',prenom,' ',Nom,' qui est de :',colval[5],' en ', colval[1])
+                        else:
+                            sql = 'SELECT Note FROM Note WHERE IDUser = %s AND NomMatiere = %s'
+                            val = (IDeleve,colval[1])
+                            cursor.execute(sql,val)
+                            if float(colval[5]) != float(cursor.fetchone()[0]):# If the garde is different than the one in the database
+                                sql = "UPDATE Note set Note = %s WHERE IDUser = %s AND NomMatiere = %s"
+                                val = (colval[5].replace(",", "."), IDeleve, colval[1])
+                                cursor.execute(sql, val)
+                                mydb.commit()
+                                print('[**] Modification de la note de',prenom,' ',Nom,' qui est de :',colval[5],' en ', colval[1])
+                            else:
+                                print('[**] La note de',prenom,' ',Nom,' qui est de :',colval[5],' en ', colval[1],' ne change pas.')
 
 def usage():
     print("Usage: main.py [-h] [-o output] days")
