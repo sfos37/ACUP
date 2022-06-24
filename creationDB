@@ -5,3 +5,9 @@ CREATE TABLE Noms (ID int, Nom varchar(255), prenom varchar(255), PRIMARY KEY (I
 CREATE TABLE Matiere (Nom varchar(255), Coeff float, PRIMARY KEY (Nom));
 CREATE TABLE Note (IDUser int, NomMatiere varchar(255), Note float, PRIMARY KEY (IDUser, NomMatiere), FOREIGN KEY(IDUser) REFERENCES Noms(ID), FOREIGN KEY(NomMatiere) REFERENCES Matiere(Nom));
 
+SELECT Noms.Nom, Noms.prenom, Matiere.Nom, Note.Note from Noms inner join Note on Noms.ID = Note.IDUser inner join Matiere on Note.NomMatiere = Matiere.Nom order by Matiere.Nom asc, Note.Note desc;
+
+SELECT row_number() over(ORDER BY moyenne desc) as rang, Noms.Nom, Noms.prenom, ROUND(SUM(Note.Note*Matiere.Coeff)/SUM(Matiere.coeff),3) AS moyenne from Noms inner join Note on Noms.ID = Note.IDUser inner join Matiere on Note.NomMatiere = Matiere.Nom WHERE Matiere.Nom LIKE "%S5%"GROUP BY Noms.ID ORDER BY moyenne desc;
+
+SELECT row_number() over(ORDER BY moyenne desc) as rang, Noms.Nom, Noms.prenom, Note.Note AS moyenne from Noms inner join Note on Noms.ID = Note.IDUser inner join Matiere on Note.NomMatiere = Matiere.Nom WHERE Matiere.Nom LIKE "%AN IRA3 2021-2022
+S05%"GROUP BY Noms.ID ORDER BY moyenne desc;
